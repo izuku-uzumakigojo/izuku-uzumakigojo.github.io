@@ -146,5 +146,116 @@
       "t_iron"
     ],
     "dungeonGatesCleared": 1
+  },
+  "Izuku": {
+    "username": "Izuku",
+    "password": "1234",
+    "age": 14,
+    "height": "166cm",
+    "weight": "37kg",
+    "level": 1,
+    "xp": 0,
+    "streak": 1,
+    "statPoints": 3,
+    "stats": {
+      "str": 10,
+      "agi": 10,
+      "end": 10,
+      "sho": 10,
+      "drb": 10,
+      "jmp": 10
+    },
+    "quiz": {
+      "sport": "Explosive Plyometrics",
+      "age": 14,
+      "height": "166cm",
+      "weight": "37kg",
+      "goal": "Ball Handling Speed and Agility"
+    },
+    "activeQuest": {
+      "title": "[QUEST]: WIZARDRY HANDLES & SHIFTINESS",
+      "description": "\"Kyrie Irving: Complete this protocol calibrated for your body biometrics.\"",
+      "tasks": [
+        {
+          "text": "60 Secs - Stationary Two-Ball Dribble Burnout (Secs)",
+          "done": false
+        },
+        {
+          "text": "60 Reps - Between-the-Legs to Crossover Combos",
+          "done": false
+        },
+        {
+          "text": "35 Reps - In-and-Out Hesitation Drives",
+          "done": false
+        },
+        {
+          "text": "25 Reps - English Layup Finishing (Both Hands)",
+          "done": false
+        }
+      ],
+      "xpReward": 120
+    }
+  },
+  "izuku": {
+    "username": "izuku",
+    "password": "1234",
+    "age": 14,
+    "height": "5ft 4in",
+    "weight": "36kg",
+    "level": 1,
+    "xp": 0,
+    "streak": 1,
+    "statPoints": 3,
+    "stats": {
+      "str": 10,
+      "agi": 10,
+      "end": 10,
+      "sho": 10,
+      "drb": 10,
+      "jmp": 10
+    },
+    "quiz": {
+      "sports": [
+        "Basketball",
+        "Calisthenics and Strength",
+        "Explosive Plyometrics"
+      ],
+      "goals": [
+        "Vertical Leap and Rim Attacks",
+        "Shooting Touch and Precision",
+        "Ball Handling Speed and Agility",
+        "Chest Upper Body Strength",
+        "Full Body Stamina"
+      ],
+      "age": 14,
+      "height": "5ft 4in",
+      "weight": "36kg"
+    },
+    "activeQuest": {
+      "title": "[CURRY FLUIDITY] Splash Range & Form Precision - Lvl 1",
+      "description": "\"Izuku Midoriya: Distance doesn't matter if your mechanics and footwork are pristine. Focus on quick release!\"",
+      "tasks": [
+        {
+          "text": "52 Form Shooting Swishes (inside paint)",
+          "done": false
+        },
+        {
+          "text": "52 Catch-and-Shoot 3-Pointers",
+          "done": false
+        },
+        {
+          "text": "65 Crossover Combo Dribbles",
+          "done": false
+        },
+        {
+          "text": "25 Free Throws",
+          "done": false
+        }
+      ],
+      "xpReward": 120
+    },
+    "lastCompletedDate": null,
+    "savedWorkoutImages": {},
+    "customQuests": []
   }
 }
