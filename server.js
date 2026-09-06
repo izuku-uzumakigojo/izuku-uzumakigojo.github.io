@@ -2,23 +2,41 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import Groq from '@groq/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const API_KEY = process.env.GEMINI_API_KEY;
-let ai = null;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+let groq = null;
+let gemini = null;
 
-if (API_KEY) {
+if (GROQ_API_KEY) {
     try {
-        ai = new GoogleGenAI({ apiKey: API_KEY });
-        console.log('[GEMINI] Gemini API client initialized for ZENITH System.');
+        groq = new Groq({ apiKey: GROQ_API_KEY });
+        console.log('[GROQ] Groq API client initialized.');
     } catch (e) {
-        console.error('[GEMINI] Failed to initialize client:', e.message);
+        console.error('[GROQ] Failed to initialize:', e.message);
     }
 } else {
-    console.warn('[GEMINI] No GEMINI_API_KEY set — running on fallback quest generator only.');
+    console.warn('[GROQ] No GROQ_API_KEY set.');
+}
+
+if (GEMINI_API_KEY) {
+    try {
+        gemini = new GoogleGenerativeAI({ apiKey: GEMINI_API_KEY });
+        console.log('[GEMINI] Gemini API client initialized.');
+    } catch (e) {
+        console.error('[GEMINI] Failed to initialize:', e.message);
+    }
+} else {
+    console.warn('[GEMINI] No GEMINI_API_KEY set.');
+}
+
+if (!groq && !gemini) {
+    console.warn('[AI] Both APIs disabled — running on fallback only.');
 }
 
 const PORT = process.env.PORT || 3000;
@@ -49,10 +67,8 @@ function getWeightScaleFactor(weightInput) {
     return Math.min(1.3, Math.max(0.65, 160 / lbs));
 }
 
-// Shared Gemini call used by both prompt & daily quest endpoints
-async function askGeminiForQuest({ sport, goal, mentor, level, weight, age, promptText }) {
-    if (!ai) return null;
-
+// Shared AI call with failover: Groq → Gemini → Fallback
+async function askAIForQuest({ sport, goal, mentor, level, weight, age, promptText }) {
     const querySubject = promptText || `${sport || 'Basketball'} training focused on ${goal || 'Vertical & Rim Attacks'}`;
     const userWeightLbs = getWeightInLbs(weight);
 
@@ -62,29 +78,57 @@ async function askGeminiForQuest({ sport, goal, mentor, level, weight, age, prom
         `{"title": "Custom Title based on Quiz Goal", "description": "In-character mentor line matching user sport", ` +
         `"workout": "Title\\n- Task 1\\n- Task 2", "tasks": ["Task 1 with reps", "Task 2 with reps"], "rewardXp": 140}`;
 
-    try {
-        const resp = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt });
-        const raw = (resp.text || resp.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-        const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-        const match = cleaned.match(/\{[\s\S]*\}/);
-        const jsonText = match ? match[0] : cleaned;
-
-        const parsed = JSON.parse(jsonText);
-
-        if (!parsed.title || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
-            console.error('[GEMINI] Response missing required fields:', jsonText.slice(0, 300));
-            return null;
+    // Try Groq first
+    if (groq) {
+        try {
+            console.log('[AI] Attempting Groq...');
+            const message = await groq.chat.completions.create({
+                model: 'mixtral-8x7b-32768',
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 500
+            });
+            const raw = message.choices[0]?.message?.content || '';
+            const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const match = cleaned.match(/\{[\s\S]*\}/);
+            const jsonText = match ? match[0] : cleaned;
+            const parsed = JSON.parse(jsonText);
+            
+            if (parsed.title && Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+                console.log('[AI] ✓ Groq quest generated successfully.');
+                if (!parsed.workout) parsed.workout = `${parsed.title}\n` + parsed.tasks.map(t => `- ${t}`).join('\n');
+                if (!parsed.rewardXp) parsed.rewardXp = 100 + (Number(level) || 1) * 20;
+                return parsed;
+            }
+        } catch (e) {
+            console.warn('[AI] Groq failed, trying Gemini:', e.message);
         }
-
-        if (!parsed.workout) parsed.workout = `${parsed.title}\n` + parsed.tasks.map(t => `- ${t}`).join('\n');
-        if (!parsed.rewardXp) parsed.rewardXp = 100 + (Number(level) || 1) * 20;
-
-        return parsed;
-    } catch (e) {
-        console.error('[GEMINI] Quest generation failed, using fallback:', e.message);
-        return null;
     }
+
+    // Try Gemini next
+    if (gemini) {
+        try {
+            console.log('[AI] Attempting Gemini...');
+            const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            const resp = await model.generateContent(prompt);
+            const raw = resp.response.text() || '';
+            const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const match = cleaned.match(/\{[\s\S]*\}/);
+            const jsonText = match ? match[0] : cleaned;
+            const parsed = JSON.parse(jsonText);
+            
+            if (parsed.title && Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+                console.log('[AI] ✓ Gemini quest generated successfully.');
+                if (!parsed.workout) parsed.workout = `${parsed.title}\n` + parsed.tasks.map(t => `- ${t}`).join('\n');
+                if (!parsed.rewardXp) parsed.rewardXp = 100 + (Number(level) || 1) * 20;
+                return parsed;
+            }
+        } catch (e) {
+            console.warn('[AI] Gemini failed:', e.message);
+        }
+    }
+
+    console.log('[AI] All AI services failed, using fallback.');
+    return null;
 }
 
 // Fallback Mentor Quest Generator with Weight & Age Tailoring
@@ -249,7 +293,7 @@ const server = http.createServer(async (req, res) => {
             try {
                 const { promptText, username, level = 1, weight = '175 lbs', age = 18, sport = 'Basketball', goal = 'Vertical' } = JSON.parse(body || '{}');
                 
-                let questData = await askGeminiForQuest({
+                let questData = await askAIForQuest({
                     promptText, sport, goal, mentor: 'Izuku Midoriya', level, weight, age
                 });
 
@@ -270,7 +314,7 @@ const server = http.createServer(async (req, res) => {
             try {
                 const { username, mentor = 'Izuku Midoriya', sport = 'Basketball', goal = 'Vertical', level = 1, weight = '175 lbs', age = 18 } = JSON.parse(body || '{}');
                 
-                let questData = await askGeminiForQuest({
+                let questData = await askAIForQuest({
                     sport, goal, mentor, level, weight, age
                 });
 
@@ -280,6 +324,75 @@ const server = http.createServer(async (req, res) => {
             } catch (err) {
                 const fb = generateFallbackQuest('Izuku Midoriya', 'Basketball', 'Vertical', 1, '175 lbs', 18);
                 return sendJson(res, 200, { success: true, ...fb });
+            }
+        });
+        return;
+    }
+
+    // Coach Chat with AI failover: Groq → Gemini
+    if (pathname === '/api/coach-chat' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', async () => {
+            try {
+                const { coachId, message } = JSON.parse(body || '{}');
+                
+                const coachNames = {
+                    'steph': 'COACH SPLASH',
+                    'kobe': 'COACH MAMBA',
+                    'kyrie': 'COACH HANDLES'
+                };
+                
+                const coachPrompt = `You are ${coachNames[coachId] || 'COACH ZENITH'}, a holographic athletic mentor in the ZENITH training system. Respond briefly (1-2 sentences) to: "${message}". Stay in character and motivate the trainee.`;
+
+                // Try Groq first
+                if (groq) {
+                    try {
+                        const response = await groq.chat.completions.create({
+                            model: 'mixtral-8x7b-32768',
+                            messages: [{ role: 'user', content: coachPrompt }],
+                            max_tokens: 150
+                        });
+                        const reply = response.choices[0]?.message?.content || '';
+                        if (reply) {
+                            console.log('[COACH] ✓ Groq response');
+                            return sendJson(res, 200, { success: true, reply });
+                        }
+                    } catch (e) {
+                        console.warn('[COACH] Groq failed, trying Gemini:', e.message);
+                    }
+                }
+
+                // Try Gemini next
+                if (gemini) {
+                    try {
+                        const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                        const response = await model.generateContent(coachPrompt);
+                        const reply = response.response.text() || '';
+                        if (reply) {
+                            console.log('[COACH] ✓ Gemini response');
+                            return sendJson(res, 200, { success: true, reply });
+                        }
+                    } catch (e) {
+                        console.warn('[COACH] Gemini failed:', e.message);
+                    }
+                }
+
+                // Fallback response
+                console.log('[COACH] All AI services failed, using fallback.');
+                const fallbacks = {
+                    'steph': "Distance doesn't matter if your mechanics are pristine. Keep firing!",
+                    'kobe': "No shortcuts today. Mental toughness wins games.",
+                    'kyrie': "Stay creative. Adapt and overcome."
+                };
+                
+                return sendJson(res, 200, { 
+                    success: false, 
+                    reply: fallbacks[coachId] || "Let's stay focused on your physical training output. What drill are we running next?" 
+                });
+            } catch (err) {
+                console.error('[COACH] Unexpected error:', err.message);
+                return sendJson(res, 200, { success: false, reply: "Keep working hard. Precision and repetition lead to mastery!" });
             }
         });
         return;
